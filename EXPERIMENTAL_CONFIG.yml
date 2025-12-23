@@ -1,0 +1,51 @@
+# Unified Spandrel Synthesis (USS) - Experimental Configuration
+
+experiment_metadata:
+  version: "1.0.0"
+  target_hardware: "SM89"
+  cuda_version: "12.x"
+  optimization_level: "Aggressive"
+
+dataset:
+  scale: 10_000_000  # Total lambda terms
+  variants: 31       # All variants from repo
+  split:
+    train: 0.8
+    val: 0.1
+    test: 0.1
+  format: "tfrecords"
+  ingestion_buffer_size: 1024
+
+model:
+  architecture: "Decoder-only Transformer"
+  layers: 12
+  d_model: 768
+  n_head: 12
+  dropout: 0.1
+  precision: "mixed_bf16"
+
+training:
+  hyperparameters:
+    lr_max: 5e-4
+    lr_min: 1e-6
+    weight_decay: 0.01
+    warmup_steps: 10000
+    total_steps: 500000
+  batch_size:
+    sm89_24gb: 2048
+    sm86_12gb: 512
+    cpu_fallback: 64
+
+convergence_criteria:
+  min_accuracy: 0.98
+  max_loss: 0.005
+  early_stopping_patience: 5
+
+benchmarks:
+  throughput_target: 100000  # tokens/sec
+  latency_target_ms: 10      # per sample synthesis
+  metrics:
+    - "Accuracy"
+    - "F1-Score"
+    - "BLEU"
+    - "Type-Correctness Rate"
