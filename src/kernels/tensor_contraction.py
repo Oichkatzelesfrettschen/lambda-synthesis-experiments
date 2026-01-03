@@ -1,16 +1,27 @@
 """Triton-based tensor contraction kernel optimized for SM89 architecture."""
+
 import torch
 import triton
 import triton.language as tl
 
+
 @triton.jit
-def tensor_contraction_kernel(
-    A_ptr, B_ptr, C_ptr,
-    M, N, K,
-    stride_am, stride_ak,
-    stride_bk, stride_bn,
-    stride_cm, stride_cn,
-    BLOCK_SIZE_M: tl.constexpr, BLOCK_SIZE_N: tl.constexpr, BLOCK_SIZE_K: tl.constexpr,
+def tensor_contraction_kernel(  # type: ignore[no-untyped-def]
+    A_ptr,
+    B_ptr,
+    C_ptr,
+    M,
+    N,
+    K,
+    stride_am,
+    stride_ak,
+    stride_bk,
+    stride_bn,
+    stride_cm,
+    stride_cn,
+    BLOCK_SIZE_M: tl.constexpr,
+    BLOCK_SIZE_N: tl.constexpr,
+    BLOCK_SIZE_K: tl.constexpr,
     GROUP_SIZE_M: tl.constexpr,
 ):
     """
@@ -45,17 +56,18 @@ def tensor_contraction_kernel(
     mask = (offs_am[:, None] < M) & (offs_bn[None, :] < N)
     tl.store(c_ptrs, accumulator.to(tl.float16), mask=mask)
 
+
 def uss_tensor_contract(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """
     Perform optimized tensor contraction (matrix multiplication) using Triton.
-    
+
     Args:
         a: Input tensor of shape (M, K)
         b: Input tensor of shape (K, N)
-        
+
     Returns:
         Output tensor of shape (M, N) with dtype float16
-        
+
     Raises:
         AssertionError: If dimensions are incompatible
     """
@@ -65,15 +77,24 @@ def uss_tensor_contract(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     K, N = b.shape
     c = torch.empty((M, N), device=a.device, dtype=torch.float16)
     grid = lambda META: (
-        triton.cdiv(M, META['BLOCK_SIZE_M']) * triton.cdiv(N, META['BLOCK_SIZE_N']),
+        triton.cdiv(M, META["BLOCK_SIZE_M"]) * triton.cdiv(N, META["BLOCK_SIZE_N"]),
     )
     tensor_contraction_kernel[grid](
-        a, b, c,
-        M, N, K,
-        a.stride(0), a.stride(1),
-        b.stride(0), b.stride(1),
-        c.stride(0), c.stride(1),
-        BLOCK_SIZE_M=128, BLOCK_SIZE_N=128, BLOCK_SIZE_K=32,
+        a,
+        b,
+        c,
+        M,
+        N,
+        K,
+        a.stride(0),
+        a.stride(1),
+        b.stride(0),
+        b.stride(1),
+        c.stride(0),
+        c.stride(1),
+        BLOCK_SIZE_M=128,
+        BLOCK_SIZE_N=128,
+        BLOCK_SIZE_K=32,
         GROUP_SIZE_M=8,
     )
     return c

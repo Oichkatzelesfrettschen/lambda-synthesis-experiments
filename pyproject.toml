@@ -137,12 +137,19 @@ module = [
     "torch.*",
     "pandas.*",
     "pyarrow.*",
+    "z3.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["src.kernels.tensor_contraction"]
+disallow_untyped_defs = false
 
 [tool.ruff]
 target-version = "py39"
 line-length = 100
+
+[tool.ruff.lint]
 select = [
     "E",    # pycodestyle errors
     "W",    # pycodestyle warnings
@@ -164,9 +171,9 @@ ignore = [
     "S101",  # use of assert (needed for tests)
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "ARG001", "ARG002"]
-"src/kernels/**/*.py" = ["N802", "N803"]  # Allow uppercase for GPU kernel naming
+"src/kernels/**/*.py" = ["N802", "N803", "N806"]  # Allow uppercase for GPU kernel naming
 
 [tool.black]
 line-length = 100
