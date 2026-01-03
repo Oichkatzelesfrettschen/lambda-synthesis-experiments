@@ -1,3 +1,4 @@
+"""Triton-based tensor contraction kernel optimized for SM89 architecture."""
 import torch
 import triton
 import triton.language as tl
@@ -44,7 +45,20 @@ def tensor_contraction_kernel(
     mask = (offs_am[:, None] < M) & (offs_bn[None, :] < N)
     tl.store(c_ptrs, accumulator.to(tl.float16), mask=mask)
 
-def uss_tensor_contract(a, b):
+def uss_tensor_contract(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """
+    Perform optimized tensor contraction (matrix multiplication) using Triton.
+    
+    Args:
+        a: Input tensor of shape (M, K)
+        b: Input tensor of shape (K, N)
+        
+    Returns:
+        Output tensor of shape (M, N) with dtype float16
+        
+    Raises:
+        AssertionError: If dimensions are incompatible
+    """
     # Check constraints
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
     M, K = a.shape

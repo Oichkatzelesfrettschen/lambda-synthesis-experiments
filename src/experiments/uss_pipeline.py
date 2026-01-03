@@ -1,10 +1,19 @@
+"""USS Pipeline - Unified Spandrel Synthesis experimental pipeline."""
+from typing import Tuple, Optional
 import os
 import time
 import torch
+import torch.nn as nn
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from src.kernels.tensor_contraction import uss_tensor_contract
+
+try:
+    from src.kernels.tensor_contraction import uss_tensor_contract
+    TRITON_AVAILABLE = True
+except ImportError:
+    TRITON_AVAILABLE = False
+    print("Warning: Triton not available, custom kernels disabled")
 
 # Configuration for SM89 / CUDA 12
 class USSConfig:
@@ -17,7 +26,7 @@ class USSConfig:
     LOG_DIR = Path("logs")
     SHARD_DIR = Path("src/data/shards")
 
-def auto_gpu_adjust():
+def auto_gpu_adjust() -> None:
     if USSConfig.DEVICE == "cuda":
         vram = torch.cuda.get_device_properties(0).total_memory
         if vram < 14 * 1024**3: # < 14GB (like 4070 Ti)
@@ -27,21 +36,25 @@ def auto_gpu_adjust():
         USSConfig.BATCH_SIZE = 64
 
 class ShardedDataset(torch.utils.data.Dataset):
-    def __init__(self, shard_dir):
+    """Dataset for loading sharded lambda term data."""
+    
+    def __init__(self, shard_dir: Path) -> None:
         self.shards = sorted(list(shard_dir.glob("*.parquet")))
         self.current_df = None
         self.current_shard_idx = -1
 
-    def __len__(self):
+    def __len__(self) -> int:
         return 10_000_000 # Known scale
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         # Implementation of streaming ingestion from Parquet shards
         # For baseline, we return a fixed-size tensor
         return torch.randn(USSConfig.MODEL_DIM), torch.randint(0, 100, (1,))
 
 class NeuralLambdaModel(torch.nn.Module):
-    def __init__(self, config):
+    """Neural model for lambda term synthesis."""
+    
+    def __init__(self, config: type) -> None:
         super().__init__()
         self.encoder = torch.nn.Linear(config.MODEL_DIM, config.MODEL_DIM)
         self.transformer = torch.nn.TransformerEncoder(
@@ -50,14 +63,14 @@ class NeuralLambdaModel(torch.nn.Module):
         )
         self.head = torch.nn.Linear(config.MODEL_DIM, 100)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Standard flow
         x = self.encoder(x)
         x = self.transformer(x)
         
         # Inject Custom Triton Kernel for specific tensor contraction nodes
         # Simulating a specialized 'Tensor Lambda' layer
-        if USSConfig.DEVICE == "cuda":
+        if USSConfig.DEVICE == "cuda" and TRITON_AVAILABLE:
             # Reshape for contraction: [B, D] @ [D, D] -> [B, D]
             # We use a dummy weight matrix for the custom kernel test
             weights = torch.randn(x.shape[-1], x.shape[-1], device=x.device, dtype=torch.float16)
@@ -69,7 +82,7 @@ class NeuralLambdaModel(torch.nn.Module):
             
         return self.head(x)
 
-def run_experiment():
+def run_experiment() -> None:
     auto_gpu_adjust()
     model = NeuralLambdaModel(USSConfig).to(USSConfig.DEVICE)
     if USSConfig.DEVICE == "cuda":

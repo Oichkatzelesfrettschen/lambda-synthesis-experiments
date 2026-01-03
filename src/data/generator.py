@@ -1,3 +1,5 @@
+"""Lambda term generator for USS data pipeline."""
+from typing import List
 import pandas as pd
 import numpy as np
 import os
@@ -6,7 +8,8 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor
 import time
 
-def generate_shard(shard_id, count, output_dir):
+
+def generate_shard(shard_id: int, count: int, output_dir: Path) -> Path:
     """
     Generates a single shard of synthetic lambda terms.
     """
@@ -27,7 +30,7 @@ def generate_shard(shard_id, count, output_dir):
     df.to_parquet(shard_path, engine='pyarrow', compression='snappy')
     return shard_path
 
-def main():
+def main() -> None:
     TOTAL_TERMS = 10_000_000
     SHARD_SIZE = 250_000
     NUM_SHARDS = TOTAL_TERMS // SHARD_SIZE
