@@ -36,6 +36,16 @@ class TestUSSConfig:
 class TestAutoGPUAdjust:
     """Test suite for GPU auto-adjustment."""
 
+    def setup_method(self) -> None:
+        """Save original config values before each test."""
+        self.original_device = USSConfig.DEVICE
+        self.original_batch_size = USSConfig.BATCH_SIZE
+
+    def teardown_method(self) -> None:
+        """Restore original config values after each test."""
+        USSConfig.DEVICE = self.original_device
+        USSConfig.BATCH_SIZE = self.original_batch_size
+
     @patch("torch.cuda.is_available")
     def test_cpu_fallback(self, mock_cuda_available: Mock) -> None:
         """Test that CPU fallback reduces batch size."""

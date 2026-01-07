@@ -1,10 +1,14 @@
 """USS Pipeline - Unified Spandrel Synthesis experimental pipeline."""
-
+import logging
 import time
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
+import torch.nn as nn
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 try:
     from src.kernels.tensor_contraction import uss_tensor_contract
@@ -12,7 +16,7 @@ try:
     TRITON_AVAILABLE = True
 except ImportError:
     TRITON_AVAILABLE = False
-    print("Warning: Triton not available, custom kernels disabled")
+    logger.warning("Triton not available, custom kernels disabled")
 
 
 # Configuration for SM89 / CUDA 12
@@ -32,13 +36,20 @@ def auto_gpu_adjust() -> None:
         vram = torch.cuda.get_device_properties(0).total_memory
         if vram < 14 * 1024**3:  # < 14GB (like 4070 Ti)
             USSConfig.BATCH_SIZE = 512
-        print(f"Detected SM89 GPU. Adjusting batch size to {USSConfig.BATCH_SIZE}.")
+        logger.info(f"Detected SM89 GPU. Adjusting batch size to {USSConfig.BATCH_SIZE}.")
     else:
         USSConfig.BATCH_SIZE = 64
 
 
 class ShardedDataset(torch.utils.data.Dataset):
-    """Dataset for loading sharded lambda term data."""
+    """
+    Dataset for loading sharded lambda term data.
+    
+    Note:
+        This is a placeholder implementation that returns random data.
+        Full implementation would load and stream from Parquet shards.
+        The shards attribute is populated but not currently used.
+    """
 
     def __init__(self, shard_dir: Path) -> None:
         self.shards = sorted(list(shard_dir.glob("*.parquet")))
@@ -47,8 +58,8 @@ class ShardedDataset(torch.utils.data.Dataset):
         return 10_000_000  # Known scale
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
-        # Implementation of streaming ingestion from Parquet shards
-        # For baseline, we return a fixed-size tensor
+        # TODO: Implement streaming ingestion from Parquet shards
+        # For baseline testing, we return fixed-size random tensors
         return torch.randn(USSConfig.MODEL_DIM), torch.randint(0, 100, (1,))
 
 
@@ -57,6 +68,7 @@ class NeuralLambdaModel(torch.nn.Module):
 
     def __init__(self, config: type[USSConfig]) -> None:
         super().__init__()
+        self.config = config
         self.encoder = torch.nn.Linear(config.MODEL_DIM, config.MODEL_DIM)
         self.transformer = torch.nn.TransformerEncoder(
             torch.nn.TransformerEncoderLayer(
@@ -65,6 +77,15 @@ class NeuralLambdaModel(torch.nn.Module):
             num_layers=12,
         )
         self.head = torch.nn.Linear(config.MODEL_DIM, 100)
+        
+        # Learnable contraction weights for custom Triton kernel
+        self.contraction_weights: Optional[torch.nn.Parameter]
+        if TRITON_AVAILABLE:
+            self.contraction_weights = torch.nn.Parameter(
+                torch.randn(config.MODEL_DIM, config.MODEL_DIM) * 0.02
+            )
+        else:
+            self.contraction_weights = None
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Standard flow
@@ -74,10 +95,10 @@ class NeuralLambdaModel(torch.nn.Module):
         # Inject Custom Triton Kernel for specific tensor contraction nodes
         # Simulating a specialized 'Tensor Lambda' layer
         # Only use Triton kernel if CUDA is actually available (not just enabled in config)
-        if TRITON_AVAILABLE and torch.cuda.is_available() and x.is_cuda:
+        if TRITON_AVAILABLE and torch.cuda.is_available() and x.is_cuda and self.contraction_weights is not None:
             # Reshape for contraction: [B, D] @ [D, D] -> [B, D]
-            # We use a dummy weight matrix for the custom kernel test
-            weights = torch.randn(x.shape[-1], x.shape[-1], device=x.device, dtype=torch.float16)
+            # Use learnable weights instead of random ones
+            weights = self.contraction_weights.to(dtype=torch.float16)
             # Flatten B,S to B*S for matmul
             B, S, D = x.shape
             x_flat = x.view(-1, D).to(torch.float16)
@@ -91,12 +112,12 @@ class NeuralLambdaModel(torch.nn.Module):
 def run_experiment() -> None:
     auto_gpu_adjust()
     model = NeuralLambdaModel(USSConfig).to(USSConfig.DEVICE)
-    if USSConfig.DEVICE == "cuda":
+    if torch.cuda.is_available() and USSConfig.DEVICE == "cuda":
         model = model.to(dtype=torch.float32)  # Mixed precision handled in forward
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4)
 
-    print(f"Executing End-to-End USS Pipeline on {USSConfig.DEVICE}...")
+    logger.info(f"Executing End-to-End USS Pipeline on {USSConfig.DEVICE}...")
 
     # Instrumentation
     start_time = time.time()
@@ -107,10 +128,11 @@ def run_experiment() -> None:
     for _ in range(5):
         _ = model(dummy_batch)
 
-    torch.cuda.synchronize() if USSConfig.DEVICE == "cuda" else None
+    if USSConfig.DEVICE == "cuda":
+        torch.cuda.synchronize()
 
     # Actual Training Loop
-    print(f"Streaming data from {USSConfig.SHARD_DIR}...")
+    logger.info(f"Streaming data from {USSConfig.SHARD_DIR}...")
     for epoch in range(1):
         for step in range(100):  # Run 100 steps for profiling
             optimizer.zero_grad()
@@ -123,17 +145,18 @@ def run_experiment() -> None:
             total_samples += USSConfig.BATCH_SIZE
 
             if step % 10 == 0:
-                print(f"Step {step}: Loss = {loss.item():.4f}")
+                logger.info(f"Step {step}: Loss = {loss.item():.4f}")
 
-    torch.cuda.synchronize() if USSConfig.DEVICE == "cuda" else None
+    if torch.cuda.is_available() and USSConfig.DEVICE == "cuda":
+        torch.cuda.synchronize()
     end_time = time.time()
 
     duration = end_time - start_time
-    print("\n--- Experimental Results ---")
-    print(f"Total Time: {duration:.2f}s")
-    print(f"Average Throughput: {total_samples / duration:.2f} samples/sec")
-    print(f"Peak Batch Latency: {(duration / 100)*1000:.2f}ms")
-    print("Target Hardware SM89 Utilization: Optimized via Custom Triton Kernel")
+    logger.info("\n--- Experimental Results ---")
+    logger.info(f"Total Time: {duration:.2f}s")
+    logger.info(f"Average Throughput: {total_samples / duration:.2f} samples/sec")
+    logger.info(f"Peak Batch Latency: {(duration / 100)*1000:.2f}ms")
+    logger.info("Target Hardware SM89 Utilization: Optimized via Custom Triton Kernel")
 
 
 if __name__ == "__main__":

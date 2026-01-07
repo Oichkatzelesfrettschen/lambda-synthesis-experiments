@@ -33,7 +33,6 @@ class TypeChecker:
             raise ImportError("Z3 solver is required for formal verification")
         self.solver = Solver()
         self.type_vars: Dict[str, Any] = {}
-        self.constraints: list = []
 
     def create_type_var(self, name: str) -> Any:
         """
@@ -56,38 +55,35 @@ class TypeChecker:
         Args:
             constraint: Z3 constraint expression
         """
-        self.constraints.append(constraint)
         self.solver.add(constraint)
 
-    def verify_type_safety(self, term_str: str) -> Tuple[bool, Optional[Any]]:
+    def verify_type_safety(self) -> Tuple[bool, Optional[Any]]:
         """
-        Verify that a lambda term is type-safe.
-
-        Args:
-            term_str: String representation of lambda term
+        Verify that the current set of constraints is satisfiable.
 
         Returns:
             Tuple of (is_valid, model) where model is Z3 model if valid
-        """
-        # This is a simplified example - full implementation would parse the term
-        # and generate appropriate constraints
 
+        Note:
+            This checks if the constraints added via add_constraint() are satisfiable.
+            To verify a specific term, first add its constraints using add_constraint().
+        """
         result = self.solver.check()
         if result == sat:
             return True, self.solver.model()
         return False, None
 
-    def infer_type(self, term: str) -> Optional[str]:
+    def infer_type(self) -> Optional[str]:
         """
-        Infer the type of a lambda term using constraint solving.
-
-        Args:
-            term: Lambda term string
+        Infer types based on current constraints using constraint solving.
 
         Returns:
-            String representation of inferred type, or None if type error
+            String representation of the model, or None if unsatisfiable
+
+        Note:
+            Add type constraints via add_constraint() before calling this method.
         """
-        is_valid, model = self.verify_type_safety(term)
+        is_valid, model = self.verify_type_safety()
         if is_valid and model:
             # Extract type from model
             return str(model)
@@ -97,7 +93,6 @@ class TypeChecker:
         """Reset the solver and clear all constraints."""
         self.solver.reset()
         self.type_vars.clear()
-        self.constraints.clear()
 
 
 class TermValidator:
@@ -178,7 +173,9 @@ def verify_term_properties(term: str) -> Dict[str, Any]:
     if Z3_AVAILABLE:
         try:
             checker = TypeChecker()
-            is_type_safe, model = checker.verify_type_safety(term)
+            # Note: Full implementation would parse term and add constraints
+            # For now, we just check if the constraint solver is working
+            is_type_safe, model = checker.verify_type_safety()
             results["type_safe"] = is_type_safe
             if not is_type_safe:
                 results["errors"].append("Type checking failed")
