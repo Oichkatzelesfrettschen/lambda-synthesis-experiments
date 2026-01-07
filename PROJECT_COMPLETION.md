@@ -100,7 +100,7 @@ The original problem statement requested:
    - Multi-Python version testing (3.9, 3.10, 3.11)
    - Artifact uploads and coverage reporting
 
-### Test Suite (650+ lines, 20 tests)
+### Test Suite (650+ lines, 18 tests)
 
 1. **[tests/unit/test_generator.py](./tests/unit/test_generator.py)** (145 lines)
    - 7 comprehensive tests for data generation
