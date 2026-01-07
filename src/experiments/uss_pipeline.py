@@ -42,8 +42,6 @@ class ShardedDataset(torch.utils.data.Dataset):
 
     def __init__(self, shard_dir: Path) -> None:
         self.shards = sorted(list(shard_dir.glob("*.parquet")))
-        self.current_df = None
-        self.current_shard_idx = -1
 
     def __len__(self) -> int:
         return 10_000_000  # Known scale
