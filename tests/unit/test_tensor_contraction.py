@@ -3,17 +3,19 @@
 import sys
 from pathlib import Path
 
+import importlib
 import pytest
 import torch
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 try:
-    import triton
-
-    from src.kernels.tensor_contraction import uss_tensor_contract
-
-    TRITON_AVAILABLE = True
+    # Check if Triton is available without importing it directly
+    if importlib.util.find_spec("triton") is not None:
+        from src.kernels.tensor_contraction import uss_tensor_contract
+        TRITON_AVAILABLE = True
+    else:
+        TRITON_AVAILABLE = False
 except ImportError:
     TRITON_AVAILABLE = False
 
