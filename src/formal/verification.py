@@ -2,6 +2,9 @@
 
 from enum import Enum
 from typing import Any, Dict, Optional, Tuple
+import logging
+
+logger = logging.getLogger(__name__)
 
 try:
     from z3 import Int, Solver, sat
@@ -9,7 +12,7 @@ try:
     Z3_AVAILABLE = True
 except ImportError:
     Z3_AVAILABLE = False
-    print("Warning: Z3 not available. Install with: pip install z3-solver")
+    logger.warning("Z3 not available. Install with: pip install z3-solver")
 
 
 class LambdaType(Enum):
