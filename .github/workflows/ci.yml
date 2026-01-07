@@ -81,7 +81,6 @@ jobs:
     - name: Run Bandit security scanner
       run: |
         bandit -r src/ -f json -o bandit-report.json
-        bandit -r src/
     
     - name: Check dependencies for vulnerabilities
       run: |
